@@ -962,4 +962,199 @@ task.spawn(function()
                     if onScreen then
                         local magnitude = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
                         if magnitude < shortestDistance then
-                            if is
+                            if isVisible(targetPart) then
+                                shortestDistance = magnitude
+                                closestTarget = targetPart
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return closestTarget
+    end
+
+    RunService.RenderStepped:Connect(function()
+        if Config.ShowFOV then
+            fovCircle.Visible = true
+            fovCircle.Radius = Config.AimRadius
+            fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        else
+            fovCircle.Visible = false
+        end
+        
+        if Config.Aimbot then
+            local target = getClosestTarget()
+            if target then
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Position)
+            end
+        end
+        
+        local activeEnemiesCount = 0
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                if not espCache[player] then
+                    espCache[player] = {
+                        Box = Drawing.new("Square"),
+                        Line = Drawing.new("Line"),
+                        HealthBarBg = Drawing.new("Line"),
+                        HealthBar = Drawing.new("Line"),
+                        Name = Drawing.new("Text")
+                    }
+                    espCache[player].Box.Filled = false
+                    espCache[player].Box.Thickness = 1.5
+                    espCache[player].Line.Thickness = 1.5
+                    espCache[player].HealthBarBg.Thickness = 4
+                    espCache[player].HealthBar.Thickness = 2
+                    espCache[player].Name.Size = 13
+                    espCache[player].Name.Center = true
+                    espCache[player].Name.Outline = true
+                    espCache[player].Name.Color = WHITE_COLOR
+                end
+                
+                local cache = espCache[player]
+                local character = player.Character
+                local humanoid = character and character:FindFirstChild("Humanoid")
+                local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+                
+                if character and humanoid and rootPart and humanoid.Health > 0 then
+                    local vector, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+                    if onScreen then
+                        activeEnemiesCount = activeEnemiesCount + 1
+
+                        local headPart = character:FindFirstChild("Head")
+                        local headVector = headPart and Camera:WorldToViewportPoint(headPart.Position + Vector3.new(0, 0.5, 0)) or vector
+                        local legVector = Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
+                        
+                        local boxHeight = math.abs(headVector.Y - legVector.Y)
+                        local boxWidth = boxHeight / 2
+                        local boxPos = Vector2.new(vector.X - boxWidth / 2, headVector.Y)
+                        
+                        if Config.ESPBox then
+                            cache.Box.Visible = true
+                            cache.Box.Size = Vector2.new(boxWidth, boxHeight)
+                            cache.Box.Position = boxPos
+                            cache.Box.Color = WHITE_COLOR
+                        else
+                            cache.Box.Visible = false
+                        end
+                        
+                        if Config.ESPLine then
+                            cache.Line.Visible = true
+                            cache.Line.From = Vector2.new(Camera.ViewportSize.X / 2, 0)
+                            cache.Line.To = Vector2.new(boxPos.X + boxWidth / 2, boxPos.Y)
+                            cache.Line.Color = WHITE_COLOR
+                        else
+                            cache.Line.Visible = false
+                        end
+                        
+                        if Config.ESPHealth then
+                            local healthPercent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+                            local barHeight = boxHeight * healthPercent
+                            
+                            cache.HealthBarBg.Visible = true
+                            cache.HealthBarBg.From = Vector2.new(boxPos.X - 6, boxPos.Y + boxHeight)
+                            cache.HealthBarBg.To = Vector2.new(boxPos.X - 6, boxPos.Y)
+                            cache.HealthBarBg.Color = Color3.fromRGB(0, 0, 0)
+                            
+                            cache.HealthBar.Visible = true
+                            cache.HealthBar.From = Vector2.new(boxPos.X - 6, boxPos.Y + boxHeight)
+                            cache.HealthBar.To = Vector2.new(boxPos.X - 6, boxPos.Y + (boxHeight - barHeight))
+                            cache.HealthBar.Color = GREEN_COLOR
+                        else
+                            cache.HealthBar.Visible = false
+                            cache.HealthBarBg.Visible = false
+                        end
+                        
+                        if Config.ESPName then
+                            cache.Name.Visible = true
+                            cache.Name.Text = player.Name
+                            cache.Name.Position = Vector2.new(boxPos.X + boxWidth / 2, boxPos.Y - 18)
+                        else
+                            cache.Name.Visible = false
+                        end
+                    else
+                        cache.Box.Visible = false
+                        cache.Line.Visible = false
+                        cache.HealthBar.Visible = false
+                        cache.HealthBarBg.Visible = false
+                        cache.Name.Visible = false
+                    end
+                else
+                    cache.Box.Visible = false
+                    cache.Line.Visible = false
+                    cache.HealthBar.Visible = false
+                    cache.HealthBarBg.Visible = false
+                    cache.Name.Visible = false
+                end
+            end
+        end
+
+        if Config.ESPLine then
+            ffEnemyCountText.Text = tostring(activeEnemiesCount)
+            ffEnemyCountText.Position = Vector2.new(Camera.ViewportSize.X / 2, 45)
+            ffEnemyCountText.Visible = true
+        else
+            ffEnemyCountText.Visible = false
+        end
+    end)
+
+    local logoDragging = false
+    local logoDragStart = Vector2.new()
+    local logoStartPos = UDim2.new()
+    local logoHasMoved = false
+
+    logoImage.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            logoDragging = true
+            logoHasMoved = false
+            logoDragStart = input.Position
+            logoStartPos = logoFrame.Position
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if logoDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - logoDragStart
+            if delta.Magnitude > 5 then logoHasMoved = true end
+            logoFrame.Position = UDim2.new(logoStartPos.X.Scale, logoStartPos.X.Offset + delta.X, logoStartPos.Y.Scale, logoStartPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if logoDragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            logoDragging = false
+            if not logoHasMoved then mainFrame.Visible = not mainFrame.Visible end
+        end
+    end)
+
+    local headerDragging = false
+    local headerDragStart = Vector2.new()
+    local headerStartPos = UDim2.new()
+    local headerHasMoved = false
+
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            headerDragging = true
+            headerHasMoved = false
+            headerDragStart = input.Position
+            headerStartPos = mainFrame.Position
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if headerDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - headerDragStart
+            if delta.Magnitude > 6 then headerHasMoved = true end
+            mainFrame.Position = UDim2.new(headerStartPos.X.Scale, headerStartPos.X.Offset + delta.X, headerStartPos.Y.Scale, headerStartPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if headerDragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            headerDragging = false
+            if not headerHasMoved then mainFrame.Visible = false end
+        end
+    end)
+end)
